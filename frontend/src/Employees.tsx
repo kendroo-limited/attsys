@@ -133,6 +133,7 @@ export default function Employees() {
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [loginEmployee, setLoginEmployee] = useState<Employee | null>(null);
   const [enrollEmployee, setEnrollEmployee] = useState<Employee | null>(null);
+  const [departments, setDepartments] = useState<{id: number; name: string}[]>([]);
   const [employeePhotoUrls, setEmployeePhotoUrls] = useState<
     Record<string, string | null>
   >({});
@@ -190,12 +191,15 @@ export default function Employees() {
   const loadEmployees = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get("/api/employees");
-      const list = (res.data?.employees || []) as Employee[];
-      setEmployees(list);
-      await refreshEmployeePhotos(list);
-    } catch (err) {
-      console.error(err);
+      const [res, deptRes] = await Promise.all([
+        api.get("/api/employees"),
+        api.get("/api/departments")
+      ]);
+      setEmployees(res.data.employees);
+      setDepartments(deptRes.data.departments || []);
+      void refreshEmployeePhotos(res.data.employees);
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, "Failed to load employees"));
     } finally {
       setLoading(false);
     }
@@ -640,6 +644,7 @@ export default function Employees() {
       <CreateEmployeeDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
+        departments={departments}
         onSuccess={() => {
           setCreateOpen(false);
           loadEmployees();
@@ -667,6 +672,7 @@ export default function Employees() {
         <EditEmployeeDialog
           open={!!editEmployee}
           employee={editEmployee}
+          departments={departments}
           onClose={() => setEditEmployee(null)}
           onSuccess={() => {
             setEditEmployee(null);
@@ -1115,10 +1121,12 @@ function CreateEmployeeDialog({
   open,
   onClose,
   onSuccess,
+  departments,
 }: {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  departments: { id: number; name: string }[];
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -1287,12 +1295,19 @@ function CreateEmployeeDialog({
               variant="outlined"
             />
             <TextField
+              select
               label="Department"
               value={form.department}
               onChange={(e) => setForm({ ...form, department: e.target.value })}
               required
               variant="outlined"
-            />
+            >
+              {departments.map((d) => (
+                <MenuItem key={d.id} value={d.name}>
+                  {d.name}
+                </MenuItem>
+              ))}
+            </TextField>
             <TextField
               label="Designation / Role"
               value={form.designation}
@@ -1368,11 +1383,13 @@ function CreateEmployeeDialog({
 function EditEmployeeDialog({
   open,
   employee,
+  departments,
   onClose,
   onSuccess,
 }: {
   open: boolean;
   employee: Employee;
+  departments: { id: number; name: string }[];
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -1955,6 +1972,7 @@ function EditEmployeeDialog({
             <Stack spacing={2}>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField
+                  select
                   label="Department"
                   value={form.department}
                   onChange={(e) =>
@@ -1963,7 +1981,13 @@ function EditEmployeeDialog({
                   required
                   fullWidth
                   size="small"
-                />
+                >
+                  {departments.map((d) => (
+                    <MenuItem key={d.id} value={d.name}>
+                      {d.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
                 <TextField
                   label="Designation / Role"
                   value={form.designation}

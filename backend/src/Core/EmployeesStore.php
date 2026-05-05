@@ -353,6 +353,15 @@ class EmployeesStore
         $tenantId = $this->resolveTenantId($pdo);
         if (!$tenantId) throw new \Exception('Tenant context missing');
 
+        // Ensure departments table exists
+        $pdo->exec("CREATE TABLE IF NOT EXISTS departments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            tenant_id INT NOT NULL,
+            name VARCHAR(128) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_dept_tenant (tenant_id, name)
+        )");
+
         // Find or create default shift for the tenant
         $shiftStmt = $pdo->prepare('SELECT id FROM shifts WHERE tenant_id=? AND is_default=1 ORDER BY id DESC LIMIT 1');
         $shiftStmt->execute([(int)$tenantId]);
@@ -421,6 +430,29 @@ class EmployeesStore
 
         try {
             $pdo->beginTransaction();
+
+            // Auto-provision departments
+            $uniqueDepartments = [];
+            foreach ($validRecords as $record) {
+                $deptName = $record[8]; // index 8 is department
+                if ($deptName && !in_array($deptName, $uniqueDepartments)) {
+                    $uniqueDepartments[] = $deptName;
+                }
+            }
+
+            if (!empty($uniqueDepartments)) {
+                $deptStmt = $pdo->prepare('SELECT name FROM departments WHERE tenant_id=?');
+                $deptStmt->execute([(int)$tenantId]);
+                $existingDepts = $deptStmt->fetchAll(\PDO::FETCH_COLUMN);
+                
+                $insDept = $pdo->prepare('INSERT IGNORE INTO departments (tenant_id, name) VALUES (?, ?)');
+                foreach ($uniqueDepartments as $deptName) {
+                    if (!in_array($deptName, $existingDepts)) {
+                        $insDept->execute([(int)$tenantId, $deptName]);
+                    }
+                }
+            }
+
             $stmt = $pdo->prepare('INSERT INTO employees (tenant_id, shift_id, name, code, profile_photo_path, gender, date_of_birth, personal_phone, email, present_address, permanent_address, department, designation, employee_type, date_of_joining, supervisor_name, work_location, status) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             
             $inserted = 0;

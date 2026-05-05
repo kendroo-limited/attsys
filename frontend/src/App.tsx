@@ -33,6 +33,7 @@ import Login from "./Login";
 import ResetPassword from "./ResetPassword";
 import Dashboard from "./Dashboard";
 import Employees from "./Employees";
+import Departments from "./Departments";
 import Clock from "./Clock";
 import Attendance from "./Attendance";
 import Devices from "./Devices";
@@ -857,6 +858,14 @@ function App() {
           element={
             <DenyRoleRoute deny={["employee", "superadmin"]}>
               <Employees />
+            </DenyRoleRoute>
+          }
+        />
+        <Route
+          path="/departments"
+          element={
+            <DenyRoleRoute deny={["employee", "superadmin"]}>
+              <Departments />
             </DenyRoleRoute>
           }
         />

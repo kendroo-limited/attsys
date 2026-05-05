@@ -113,6 +113,12 @@ const navItems: NavItem[] = [
     roles: ["tenant_owner", "hr_admin", "manager"],
   },
   {
+    label: "Departments",
+    to: "/departments",
+    icon: <ApartmentRounded />,
+    roles: ["tenant_owner", "hr_admin", "manager"],
+  },
+  {
     label: "Check In/Out",
     to: "/clock",
     icon: <AccessTimeRounded />,
