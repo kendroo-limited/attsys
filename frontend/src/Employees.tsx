@@ -1126,7 +1126,7 @@ function CreateEmployeeDialog({
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  departments: { id: number; name: string }[];
+  departments: { id: number; name: string; designations?: {id: number; name: string}[] }[];
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -1309,6 +1309,7 @@ function CreateEmployeeDialog({
               ))}
             </TextField>
             <TextField
+              select
               label="Designation / Role"
               value={form.designation}
               onChange={(e) =>
@@ -1316,7 +1317,20 @@ function CreateEmployeeDialog({
               }
               required
               variant="outlined"
-            />
+            >
+              {(departments.find(d => d.name === form.department)?.designations || []).map(desig => (
+                <MenuItem key={desig.id} value={desig.name}>{desig.name}</MenuItem>
+              ))}
+              {(departments.find(d => d.name === form.department)?.designations || []).length === 0 && (
+                <MenuItem value="" disabled>No roles defined for this department</MenuItem>
+              )}
+              {/* For legacy strings that don't match, or if they want to clear it, but it's required. 
+                  Actually, if form.designation exists but isn't in the list, MUI Select might complain,
+                  so let's add it dynamically if missing. */}
+              {form.designation && !(departments.find(d => d.name === form.department)?.designations || []).find(x => x.name === form.designation) && (
+                <MenuItem value={form.designation}>{form.designation}</MenuItem>
+              )}
+            </TextField>
             <TextField
               select
               label="Employee Type"
@@ -1389,7 +1403,7 @@ function EditEmployeeDialog({
 }: {
   open: boolean;
   employee: Employee;
-  departments: { id: number; name: string }[];
+  departments: { id: number; name: string; designations?: {id: number; name: string}[] }[];
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -1989,6 +2003,7 @@ function EditEmployeeDialog({
                   ))}
                 </TextField>
                 <TextField
+                  select
                   label="Designation / Role"
                   value={form.designation}
                   onChange={(e) =>
@@ -1997,7 +2012,17 @@ function EditEmployeeDialog({
                   required
                   fullWidth
                   size="small"
-                />
+                >
+                  {(departments.find(d => d.name === form.department)?.designations || []).map(desig => (
+                    <MenuItem key={desig.id} value={desig.name}>{desig.name}</MenuItem>
+                  ))}
+                  {(departments.find(d => d.name === form.department)?.designations || []).length === 0 && (
+                    <MenuItem value="" disabled>No roles defined for this department</MenuItem>
+                  )}
+                  {form.designation && !(departments.find(d => d.name === form.department)?.designations || []).find(x => x.name === form.designation) && (
+                    <MenuItem value={form.designation}>{form.designation}</MenuItem>
+                  )}
+                </TextField>
               </Stack>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField

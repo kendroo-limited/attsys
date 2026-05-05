@@ -170,6 +170,9 @@ $router->getAuth('/api/departments', ['App\Controller\DepartmentController', 'li
 $router->postAuth('/api/departments', ['App\Controller\DepartmentController', 'create'], 'perm:employees.write');
 $router->postAuth('/api/departments/update', ['App\Controller\DepartmentController', 'update'], 'perm:employees.write');
 $router->postAuth('/api/departments/delete', ['App\Controller\DepartmentController', 'delete'], 'perm:employees.write');
+$router->postAuth('/api/departments/designations', ['App\Controller\DepartmentController', 'createDesignation'], 'perm:employees.write');
+$router->postAuth('/api/departments/designations/update', ['App\Controller\DepartmentController', 'updateDesignation'], 'perm:employees.write');
+$router->postAuth('/api/departments/designations/delete', ['App\Controller\DepartmentController', 'deleteDesignation'], 'perm:employees.write');
 $router->postAuth('/api/employees/delete', ['App\Controller\EmployeeController', 'delete'], 'perm:employees.write');
 $router->getAuth('/api/employees/profile_photo', ['App\Controller\EmployeeController', 'profilePhoto'], 'perm:employees.read');
 $router->postAuth('/api/employees/profile_photo/upload', ['App\Controller\EmployeeController', 'uploadProfilePhoto'], 'perm:employees.write');

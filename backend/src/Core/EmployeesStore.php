@@ -453,6 +453,23 @@ class EmployeesStore
                 }
             }
 
+            // Auto-provision designations
+            $deptIdMap = [];
+            $deptStmt2 = $pdo->prepare('SELECT id, name FROM departments WHERE tenant_id=?');
+            $deptStmt2->execute([(int)$tenantId]);
+            foreach ($deptStmt2->fetchAll() as $row) {
+                $deptIdMap[$row['name']] = $row['id'];
+            }
+
+            $insDesig = $pdo->prepare('INSERT IGNORE INTO designations (tenant_id, department_id, name) VALUES (?, ?, ?)');
+            foreach ($validRecords as $record) {
+                $deptName = $record[8]; // index 8 is department
+                $desigName = $record[9]; // index 9 is designation
+                if ($deptName && $desigName && isset($deptIdMap[$deptName])) {
+                    $insDesig->execute([(int)$tenantId, $deptIdMap[$deptName], $desigName]);
+                }
+            }
+
             $stmt = $pdo->prepare('INSERT INTO employees (tenant_id, shift_id, name, code, profile_photo_path, gender, date_of_birth, personal_phone, email, present_address, permanent_address, department, designation, employee_type, date_of_joining, supervisor_name, work_location, status) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             
             $inserted = 0;
