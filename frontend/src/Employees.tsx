@@ -133,7 +133,8 @@ export default function Employees() {
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [loginEmployee, setLoginEmployee] = useState<Employee | null>(null);
   const [enrollEmployee, setEnrollEmployee] = useState<Employee | null>(null);
-  const [departments, setDepartments] = useState<{id: number; name: string}[]>([]);
+  const [departments, setDepartments] = useState<{id: number; name: string; designations?: {id: number, name: string}[]}[]>([]);
+  const [workLocations, setWorkLocations] = useState<{id: string; name: string}[]>([]);
   const [employeePhotoUrls, setEmployeePhotoUrls] = useState<
     Record<string, string | null>
   >({});
@@ -191,12 +192,14 @@ export default function Employees() {
   const loadEmployees = useCallback(async () => {
     try {
       setLoading(true);
-      const [res, deptRes] = await Promise.all([
+      const [res, deptRes, fencesRes] = await Promise.all([
         api.get("/api/employees"),
-        api.get("/api/departments")
+        api.get("/api/departments"),
+        api.get("/api/geo/fences/names").catch(() => ({ data: { fences: [] } }))
       ]);
       setEmployees(res.data.employees);
       setDepartments(deptRes.data.departments || []);
+      setWorkLocations(fencesRes.data.fences || []);
       void refreshEmployeePhotos(res.data.employees);
     } catch (err: unknown) {
       alert(getErrorMessage(err, "Failed to load employees"));
@@ -645,6 +648,8 @@ export default function Employees() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         departments={departments}
+        allEmployees={employees}
+        sites={workLocations}
         onSuccess={() => {
           setCreateOpen(false);
           loadEmployees();
@@ -673,6 +678,8 @@ export default function Employees() {
           open={!!editEmployee}
           employee={editEmployee}
           departments={departments}
+          allEmployees={employees}
+          sites={workLocations}
           onClose={() => setEditEmployee(null)}
           onSuccess={() => {
             setEditEmployee(null);
@@ -1122,11 +1129,15 @@ function CreateEmployeeDialog({
   onClose,
   onSuccess,
   departments,
+  allEmployees,
+  sites,
 }: {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
   departments: { id: number; name: string; designations?: {id: number; name: string}[] }[];
+  allEmployees: Employee[];
+  sites: { id: string; name: string }[];
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -1357,6 +1368,7 @@ function CreateEmployeeDialog({
               InputLabelProps={{ shrink: true }}
             />
             <TextField
+              select
               label="Supervisor / Reporting Manager"
               value={form.supervisor_name}
               onChange={(e) =>
@@ -1364,8 +1376,17 @@ function CreateEmployeeDialog({
               }
               required
               variant="outlined"
-            />
+            >
+              <MenuItem value="">None</MenuItem>
+              {allEmployees.map(emp => (
+                <MenuItem key={emp.id} value={emp.name}>{emp.name}</MenuItem>
+              ))}
+              {form.supervisor_name && !allEmployees.find(e => e.name === form.supervisor_name) && (
+                <MenuItem value={form.supervisor_name}>{form.supervisor_name}</MenuItem>
+              )}
+            </TextField>
             <TextField
+              select
               label="Work Location / Branch"
               value={form.work_location}
               onChange={(e) =>
@@ -1373,7 +1394,15 @@ function CreateEmployeeDialog({
               }
               required
               variant="outlined"
-            />
+            >
+              <MenuItem value="">None</MenuItem>
+              {sites.map(site => (
+                <MenuItem key={site.id} value={site.name}>{site.name}</MenuItem>
+              ))}
+              {form.work_location && !sites.find(s => s.name === form.work_location) && (
+                <MenuItem value={form.work_location}>{form.work_location}</MenuItem>
+              )}
+            </TextField>
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
@@ -1398,12 +1427,16 @@ function EditEmployeeDialog({
   open,
   employee,
   departments,
+  allEmployees,
+  sites,
   onClose,
   onSuccess,
 }: {
   open: boolean;
   employee: Employee;
   departments: { id: number; name: string; designations?: {id: number; name: string}[] }[];
+  allEmployees: Employee[];
+  sites: { id: string; name: string }[];
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -2055,6 +2088,7 @@ function EditEmployeeDialog({
               </Stack>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField
+                  select
                   label="Supervisor / Reporting Manager"
                   value={form.supervisor_name}
                   onChange={(e) =>
@@ -2063,8 +2097,17 @@ function EditEmployeeDialog({
                   required
                   fullWidth
                   size="small"
-                />
+                >
+                  <MenuItem value="">None</MenuItem>
+                  {allEmployees.filter(e => e.id !== employee.id).map(emp => (
+                    <MenuItem key={emp.id} value={emp.name}>{emp.name}</MenuItem>
+                  ))}
+                  {form.supervisor_name && !allEmployees.find(e => e.name === form.supervisor_name) && (
+                    <MenuItem value={form.supervisor_name}>{form.supervisor_name}</MenuItem>
+                  )}
+                </TextField>
                 <TextField
+                  select
                   label="Work Location / Branch"
                   value={form.work_location}
                   onChange={(e) =>
@@ -2073,7 +2116,15 @@ function EditEmployeeDialog({
                   required
                   fullWidth
                   size="small"
-                />
+                >
+                  <MenuItem value="">None</MenuItem>
+                  {sites.map(site => (
+                    <MenuItem key={site.id} value={site.name}>{site.name}</MenuItem>
+                  ))}
+                  {form.work_location && !sites.find(s => s.name === form.work_location) && (
+                    <MenuItem value={form.work_location}>{form.work_location}</MenuItem>
+                  )}
+                </TextField>
               </Stack>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField

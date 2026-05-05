@@ -27,6 +27,31 @@ class GeoController
         $stmt->execute([(int)$tenantId]);
     }
 
+    // Lightweight read: returns only id+name for dropdowns (needs only employees.read)
+    public function fencesNames()
+    {
+        Auth::requireRole('perm:employees.read');
+        header('Content-Type: application/json');
+
+        $user = Auth::currentUser();
+        if (!$user) { http_response_code(401); echo json_encode(['error' => 'Unauthorized']); return; }
+
+        $pdo = Database::get();
+        if (!$pdo) { echo json_encode(['fences' => []]); return; }
+
+        $tenantId = $this->resolveTenantId($user, $pdo);
+        if (!$tenantId) { echo json_encode(['fences' => []]); return; }
+
+        $stmt = $pdo->prepare('SELECT id, name FROM geo_fences WHERE tenant_id=? AND active=1 ORDER BY is_default DESC, name ASC');
+        $stmt->execute([(int)$tenantId]);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = ['id' => (string)$r['id'], 'name' => (string)$r['name']];
+        }
+        echo json_encode(['fences' => $out]);
+    }
+
     public function fencesList()
     {
         Auth::requireRole('perm:geo.manage');

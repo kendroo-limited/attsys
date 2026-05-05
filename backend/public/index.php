@@ -138,6 +138,7 @@ $router->getAuth('/api/sites', ['App\Controller\SiteController', 'list'], 'perm:
 $router->postAuth('/api/sites', ['App\Controller\SiteController', 'create'], 'perm:sites.manage');
 
 // Geo-Fencing & Location Tracking
+$router->getAuth('/api/geo/fences/names', ['App\Controller\GeoController', 'fencesNames'], 'perm:employees.read');
 $router->getAuth('/api/geo/fences', ['App\Controller\GeoController', 'fencesList'], 'perm:geo.manage');
 $router->postAuth('/api/geo/fences', ['App\Controller\GeoController', 'fencesCreate'], 'perm:geo.manage');
 $router->postAuth('/api/geo/fences/update', ['App\Controller\GeoController', 'fencesUpdate'], 'perm:geo.manage');
