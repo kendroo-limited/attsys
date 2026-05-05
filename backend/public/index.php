@@ -162,6 +162,7 @@ $router->postAuth('/api/tenants/status', ['App\Controller\TenantController', 'se
 $router->getAuth('/api/employees', ['App\Controller\EmployeeController', 'list'], 'perm:employees.read');
 $router->getAuth('/api/employees/device_sync_ids', ['App\Controller\EmployeeController', 'deviceSyncIds'], 'perm:employees.read');
 $router->postAuth('/api/employees', ['App\Controller\EmployeeController', 'create'], 'perm:employees.write');
+$router->postAuth('/api/employees/bulk', ['App\Controller\EmployeeController', 'bulkCreate'], 'perm:employees.write');
 $router->postAuth('/api/employees/update', ['App\Controller\EmployeeController', 'update'], 'perm:employees.write');
 $router->postAuth('/api/employees/delete', ['App\Controller\EmployeeController', 'delete'], 'perm:employees.write');
 $router->getAuth('/api/employees/profile_photo', ['App\Controller\EmployeeController', 'profilePhoto'], 'perm:employees.read');

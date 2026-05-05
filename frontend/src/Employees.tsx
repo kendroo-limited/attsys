@@ -126,6 +126,7 @@ export default function Employees() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
     null
   );
@@ -246,20 +247,35 @@ export default function Employees() {
             efficiently.
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={<AddIcon />}
-          onClick={() => setCreateOpen(true)}
-          sx={{
-            px: 4,
-            py: 1.5,
-            borderRadius: 2,
-            width: { xs: "100%", sm: "auto" },
-          }}
-        >
-          Add Employee
-        </Button>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} width={{ xs: "100%", sm: "auto" }}>
+          <Button
+            variant="outlined"
+            size="large"
+            onClick={() => setBulkOpen(true)}
+            sx={{
+              px: 3,
+              py: 1.5,
+              borderRadius: 2,
+              width: { xs: "100%", sm: "auto" },
+            }}
+          >
+            Bulk Import
+          </Button>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateOpen(true)}
+            sx={{
+              px: 3,
+              py: 1.5,
+              borderRadius: 2,
+              width: { xs: "100%", sm: "auto" },
+            }}
+          >
+            Add Employee
+          </Button>
+        </Stack>
       </Box>
 
       {/* Employee List */}
@@ -626,6 +642,15 @@ export default function Employees() {
         onClose={() => setCreateOpen(false)}
         onSuccess={() => {
           setCreateOpen(false);
+          loadEmployees();
+        }}
+      />
+
+      <BulkUploadEmployeeDialog
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        onSuccess={() => {
+          setBulkOpen(false);
           loadEmployees();
         }}
       />
@@ -3892,6 +3917,129 @@ function AttendanceDialog({
           </Button>
         </DialogActions>
       </Dialog>
+    </Dialog>
+  );
+}
+
+function BulkUploadEmployeeDialog({
+  open,
+  onClose,
+  onSuccess,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [csvText, setCsvText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+
+  useEffect(() => {
+    if (open) {
+      setCsvText("name,code,gender,date_of_birth,personal_phone,email,present_address,permanent_address,department,designation,employee_type,date_of_joining,supervisor_name,work_location\nJohn Doe,EMP01,Male,1990-01-01,0123456789,john@example.com,Dhaka,Dhaka,IT,Engineer,Full-time,2024-01-01,Boss,HQ");
+      setError("");
+    }
+  }, [open]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (!csvText.trim()) {
+      setError("Please enter CSV data");
+      return;
+    }
+
+    try {
+      const lines = csvText.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) throw new Error("Provide at least a header row and one data row");
+
+      // Simple CSV parsing that doesn't handle commas inside fields perfectly,
+      // but good enough for basic bulk import
+      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+      
+      const employeesData = lines.slice(1).map((line) => {
+        // Handle basic quotes (remove them if they wrap the entire field)
+        const values = line.split(",").map((v) => {
+          let val = v.trim();
+          if (val.startsWith('"') && val.endsWith('"')) {
+            val = val.substring(1, val.length - 1);
+          }
+          return val;
+        });
+        
+        const obj: any = {};
+        headers.forEach((h, i) => {
+          obj[h] = values[i] || "";
+        });
+        return obj;
+      });
+
+      setBusy(true);
+      const res = await api.post("/api/employees/bulk", { employees: employeesData });
+      alert(`Successfully imported ${res.data.inserted} employees.`);
+      onSuccess();
+    } catch (err: any) {
+      setError(getErrorMessage(err, "Failed to import employees"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      fullScreen={isMobile}
+      PaperProps={{ sx: { borderRadius: isMobile ? 0 : 3 } }}
+    >
+      <form onSubmit={handleSubmit}>
+        <DialogTitle sx={{ display: "flex", justifyContent: "space-between", pb: 1 }}>
+          <Typography fontWeight={800}>Bulk Import Employees</Typography>
+          <IconButton onClick={onClose} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            {error && <Alert severity="error" sx={{ whiteSpace: "pre-wrap" }}>{error}</Alert>}
+            
+            <Typography variant="body2" color="text.secondary">
+              Paste your CSV data below. Make sure the first line is the header matching the required fields. 
+              Do not use commas inside values.
+            </Typography>
+
+            <TextField
+              label="CSV Data"
+              multiline
+              minRows={10}
+              maxRows={20}
+              fullWidth
+              value={csvText}
+              onChange={(e) => setCsvText(e.target.value)}
+              disabled={busy}
+              sx={{ fontFamily: "monospace" }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 1 }}>
+          <Button onClick={onClose} color="inherit" disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={busy}
+            sx={{ px: 3, borderRadius: 2 }}
+          >
+            {busy ? <CircularProgress size={24} color="inherit" /> : "Import Employees"}
+          </Button>
+        </DialogActions>
+      </form>
     </Dialog>
   );
 }

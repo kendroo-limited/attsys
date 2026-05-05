@@ -342,6 +342,118 @@ class EmployeesStore
         return $item;
     }
 
+    public function bulkCreate(array $employeesData)
+    {
+        $pdo = Database::get();
+        if (!$pdo) {
+            throw new \Exception('Bulk creation requires database connection');
+        }
+
+        self::ensureEmployeeProfileColumns($pdo);
+        $tenantId = $this->resolveTenantId($pdo);
+        if (!$tenantId) throw new \Exception('Tenant context missing');
+
+        // Find or create default shift for the tenant
+        $shiftStmt = $pdo->prepare('SELECT id FROM shifts WHERE tenant_id=? AND is_default=1 ORDER BY id DESC LIMIT 1');
+        $shiftStmt->execute([(int)$tenantId]);
+        $shiftId = $shiftStmt->fetchColumn();
+        if (!$shiftId) {
+            $insShift = $pdo->prepare("INSERT INTO shifts (tenant_id, name, start_time, end_time, late_tolerance_minutes, early_exit_tolerance_minutes, break_duration_minutes, working_days, is_default) VALUES (?, 'Standard Shift', '09:00:00', '17:00:00', 15, 15, 0, 'Mon,Tue,Wed,Thu,Fri', 1)");
+            $insShift->execute([(int)$tenantId]);
+            $shiftId = (int)$pdo->lastInsertId();
+            if ($shiftId <= 0) {
+                $shiftStmt->execute([(int)$tenantId]);
+                $shiftId = (int)$shiftStmt->fetchColumn();
+            }
+        }
+
+        // Validate all records before starting transaction
+        $validRecords = [];
+        $errors = [];
+        $existingCodes = [];
+
+        $codeStmt = $pdo->prepare('SELECT code FROM employees WHERE tenant_id=?');
+        $codeStmt->execute([(int)$tenantId]);
+        while ($row = $codeStmt->fetch()) {
+            $existingCodes[$row['code']] = true;
+        }
+
+        foreach ($employeesData as $index => $in) {
+            $name = trim((string)($in['name'] ?? ''));
+            $code = trim((string)($in['code'] ?? ''));
+            $gender = trim((string)($in['gender'] ?? ''));
+            $dateOfBirth = trim((string)($in['date_of_birth'] ?? ''));
+            $personalPhone = trim((string)($in['personal_phone'] ?? ''));
+            $email = trim((string)($in['email'] ?? ''));
+            $presentAddress = trim((string)($in['present_address'] ?? ''));
+            $permanentAddress = trim((string)($in['permanent_address'] ?? ''));
+            $department = trim((string)($in['department'] ?? ''));
+            $designation = trim((string)($in['designation'] ?? ''));
+            $employeeType = trim((string)($in['employee_type'] ?? ''));
+            $dateOfJoining = trim((string)($in['date_of_joining'] ?? ''));
+            $supervisorName = trim((string)($in['supervisor_name'] ?? ''));
+            $workLocation = trim((string)($in['work_location'] ?? ''));
+
+            if ($name === '') $errors[] = "Row " . ($index + 1) . ": Full name required";
+            if ($code === '') $errors[] = "Row " . ($index + 1) . ": Employee code required";
+            elseif (isset($existingCodes[$code])) $errors[] = "Row " . ($index + 1) . ": Employee code '$code' already exists";
+            
+            if ($dateOfBirth !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) $errors[] = "Row " . ($index + 1) . ": Invalid date of birth format";
+            if ($dateOfJoining !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfJoining)) $errors[] = "Row " . ($index + 1) . ": Invalid date of joining format";
+
+            if (empty($errors)) {
+                $existingCodes[$code] = true; // prevent duplicates within the same batch
+                $validRecords[] = [
+                    $name, $code, $gender, $dateOfBirth ?: null, $personalPhone, $email, 
+                    $presentAddress, $permanentAddress, $department, $designation, 
+                    $employeeType, $dateOfJoining ?: null, $supervisorName, $workLocation
+                ];
+            }
+        }
+
+        if (!empty($errors)) {
+            throw new \Exception("Bulk validation failed:\n" . implode("\n", $errors));
+        }
+
+        if (empty($validRecords)) {
+            return ['inserted' => 0];
+        }
+
+        try {
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare('INSERT INTO employees (tenant_id, shift_id, name, code, profile_photo_path, gender, date_of_birth, personal_phone, email, present_address, permanent_address, department, designation, employee_type, date_of_joining, supervisor_name, work_location, status) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            
+            $inserted = 0;
+            foreach ($validRecords as $record) {
+                $stmt->execute([
+                    (int)$tenantId,
+                    (int)$shiftId,
+                    $record[0], // name
+                    $record[1], // code
+                    $record[2], // gender
+                    $record[3], // date_of_birth
+                    $record[4], // personal_phone
+                    $record[5], // email
+                    $record[6], // present_address
+                    $record[7], // permanent_address
+                    $record[8], // department
+                    $record[9], // designation
+                    $record[10], // employee_type
+                    $record[11], // date_of_joining
+                    $record[12], // supervisor_name
+                    $record[13], // work_location
+                    'active'
+                ]);
+                $inserted++;
+            }
+            $pdo->commit();
+            return ['inserted' => $inserted];
+        } catch (\Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw new \Exception("Database error during bulk insert: " . $e->getMessage());
+        }
+    }
+
     public function update($id, array $in, $deviceSyncIds = null)
     {
         $name = trim((string)($in['name'] ?? ''));

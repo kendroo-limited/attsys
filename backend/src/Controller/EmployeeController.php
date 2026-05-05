@@ -30,6 +30,22 @@ class EmployeeController
         }
     }
 
+    public function bulkCreate()
+    {
+        header('Content-Type: application/json');
+        $in = json_decode(file_get_contents('php://input'), true);
+        try {
+            if (!isset($in['employees']) || !is_array($in['employees'])) {
+                throw new \Exception('Invalid request format, expected "employees" array');
+            }
+            $result = $this->store->bulkCreate($in['employees']);
+            echo json_encode($result);
+        } catch (\Exception $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
     public function update()
     {
         header('Content-Type: application/json');
