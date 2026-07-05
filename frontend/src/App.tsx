@@ -39,6 +39,7 @@ import Attendance from "./Attendance";
 import Devices from "./Devices";
 import DeviceEvents from "./DeviceEvents";
 import DeviceIngestTest from "./DeviceIngestTest";
+import EmployeeDevicePunches from "./EmployeeDevicePunches";
 import Sites from "./Sites";
 import Shifts from "./Shifts";
 import Roster from "./Roster";
@@ -934,6 +935,14 @@ function App() {
           }
         />
         <Route
+          path="/devices/employee-punches"
+          element={
+            <DenyRoleRoute deny={["superadmin"]}>
+              <EmployeeDevicePunches />
+            </DenyRoleRoute>
+          }
+        />
+        <Route
           path="/sites"
           element={
             <DenyRoleRoute deny={["superadmin"]}>
@@ -972,14 +981,6 @@ function App() {
           element={
             <DenyRoleRoute deny={["superadmin"]}>
               <Roster />
-            </DenyRoleRoute>
-          }
-        />
-        <Route
-          path="/reports"
-          element={
-            <DenyRoleRoute deny={["employee", "superadmin"]}>
-              <Reports />
             </DenyRoleRoute>
           }
         />

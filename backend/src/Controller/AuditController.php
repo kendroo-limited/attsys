@@ -36,7 +36,8 @@ class AuditController
         if ($limit <= 0) $limit = 200;
         if ($limit > 500) $limit = 500;
 
-        $stmt = $pdo->query('SELECT id, time, action, user_id, user_role, user_name, meta FROM audit_logs ORDER BY id DESC LIMIT 500');
+        $stmt = $pdo->prepare('SELECT id, time, action, user_id, user_role, user_name, meta FROM audit_logs ORDER BY id DESC LIMIT ?');
+        $stmt->execute([500]);
         $rows = $stmt->fetchAll();
 
         $out = [];

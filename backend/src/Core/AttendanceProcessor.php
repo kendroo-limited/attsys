@@ -72,7 +72,7 @@ class AttendanceProcessor
                 }
             }
 
-            foreach ($byEmpDate as &$v) {
+            foreach ($byEmpDate as $key => &$v) {
                 $punches = $v['punches'] ?? [];
                 if (!is_array($punches) || !$punches) continue;
 
@@ -83,29 +83,37 @@ class AttendanceProcessor
                     if (!$v['in'] || (string)$firstPunch < (string)$v['in']) $v['in'] = $firstPunch;
                 }
 
-                $pairCount = (int)floor(count($punches) / 2);
-                if ($pairCount > 0) {
-                    if ((count($punches) % 2) === 0) $v['has_out'] = true;
-                    $worked = 0;
-                    // OBS-006: Minimum punch duration of 5 minutes to filter out invalid/accidental punches
-                    $minPunchDurationMinutes = 5;
-                    for ($i = 0; $i + 1 < count($punches); $i += 2) {
-                        $inDt = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string)$punches[$i], $utcTz);
-                        $outDt = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string)$punches[$i + 1], $utcTz);
-                        if (!$inDt || !$outDt) continue;
-                        $inTs = $inDt->getTimestamp();
-                        $outTs = $outDt->getTimestamp();
-                        if ($outTs <= $inTs) continue;
-                        $punchDuration = (int)floor(($outTs - $inTs) / 60);
-                        // Skip punches shorter than minimum duration (likely accidental)
-                        if ($punchDuration < $minPunchDurationMinutes) continue;
-                        $worked += $punchDuration;
-                    }
-                    $v['worked'] = max((int)$v['worked'], $worked);
+                $punchCount = count($punches);
+                $pairCount = (int)floor($punchCount / 2);
+                $worked = 0;
+                $minPunchDurationMinutes = 5;
+                for ($i = 0; $i + 1 < $punchCount; $i += 2) {
+                    $inDt = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string)$punches[$i], $utcTz);
+                    $outDt = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string)$punches[$i + 1], $utcTz);
+                    if (!$inDt || !$outDt) continue;
+                    $inTs = $inDt->getTimestamp();
+                    $outTs = $outDt->getTimestamp();
+                    if ($outTs <= $inTs) continue;
+                    $punchDuration = (int)floor(($outTs - $inTs) / 60);
+                    if ($punchDuration < $minPunchDurationMinutes) continue;
+                    $worked += $punchDuration;
+                }
+                $v['worked'] = max((int)$v['worked'], $worked);
 
-                    $lastCompleteOut = $punches[($pairCount * 2) - 1] ?? null;
-                    if ($lastCompleteOut) {
-                        if (!$v['out'] || (string)$lastCompleteOut > (string)$v['out']) $v['out'] = $lastCompleteOut;
+                // First punch = in, last punch = out
+                if ($punchCount >= 2) {
+                    $lastPunch = $punches[$punchCount - 1];
+                    if (!$v['out'] || (string)$lastPunch > (string)$v['out']) $v['out'] = $lastPunch;
+                    $v['has_out'] = true;
+                } elseif ($punchCount === 1) {
+                    // Only 1 punch on a PAST date: default out to midnight (end of day)
+                    $parts = explode('|', $key);
+                    $dateLocal = $parts[1] ?? null;
+                    if ($dateLocal && $dateLocal < (new \DateTimeImmutable('now', $localTz))->format('Y-m-d')) {
+                        $midnightLocal = new \DateTimeImmutable($dateLocal . ' 00:00:00', $localTz);
+                        $midnightLocal = $midnightLocal->modify('+1 day');
+                        $v['out'] = $midnightLocal->setTimezone($utcTz)->format('Y-m-d H:i:s');
+                        $v['has_out'] = true;
                     }
                 }
             }
@@ -230,6 +238,17 @@ class AttendanceProcessor
 
             // Update database with roster tracking
             $up->execute([$tenantId, $empId, $date, $in, $out, $worked, $lateMinutes, $earlyLeaveMinutes, $overtimeMinutes, $status, $rosterAssignmentId, $isRosterDuty]);
+
+            // Also insert into attendance_records if no record exists yet.
+            // Reports.tsx reads from attendance_records; device punches only go to raw_events.
+            // Web clock-in/out creates attendance_records directly (not raw_events), so skip if exists.
+            $arChk = $pdo->prepare('SELECT 1 FROM attendance_records WHERE employee_id=? AND date=? LIMIT 1');
+            $arChk->execute([$empId, $date]);
+            if (!$arChk->fetchColumn()) {
+                $arIn = $pdo->prepare('INSERT INTO attendance_records (employee_id, clock_in, clock_out, duration_minutes, date, status, late_minutes, early_leave_minutes, overtime_minutes) VALUES (?,?,?,?,?,?,?,?,?)');
+                $arIn->execute([$empId, $in, $out, $worked, $date, $status, $lateMinutes, $earlyLeaveMinutes, $overtimeMinutes]);
+            }
+
             $result[] = ['employee_id' => $empId, 'date' => $date, 'in_time' => $in, 'out_time' => $out, 'worked_minutes' => $worked, 'late_minutes' => $lateMinutes, 'early_leave_minutes' => $earlyLeaveMinutes, 'overtime_minutes' => $overtimeMinutes, 'status' => $status, 'is_roster_duty' => $isRosterDuty];
         }
 

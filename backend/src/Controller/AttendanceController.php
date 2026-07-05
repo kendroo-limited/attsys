@@ -736,10 +736,10 @@ class AttendanceController
         }
 
         if ($scopedEmployeeId) {
-            $eStmt = $pdo->prepare('SELECT e.id, e.tenant_id, e.shift_id, s.name AS shift_name, s.working_days, e.name, e.code, e.status, e.created_at FROM employees e JOIN shifts s ON s.id = e.shift_id WHERE e.tenant_id=? AND e.id=? ORDER BY e.id DESC');
+            $eStmt = $pdo->prepare('SELECT e.id, e.tenant_id, e.shift_id, s.name AS shift_name, s.working_days, e.name, e.code, e.status, e.created_at FROM employees e LEFT JOIN shifts s ON s.id = e.shift_id WHERE e.tenant_id=? AND e.id=? ORDER BY e.id DESC');
             $eStmt->execute([(int)$tenantId, (int)$scopedEmployeeId]);
         } else {
-            $eStmt = $pdo->prepare('SELECT e.id, e.tenant_id, e.shift_id, s.name AS shift_name, s.working_days, e.name, e.code, e.status, e.created_at FROM employees e JOIN shifts s ON s.id = e.shift_id WHERE e.tenant_id=? ORDER BY e.id DESC');
+            $eStmt = $pdo->prepare('SELECT e.id, e.tenant_id, e.shift_id, s.name AS shift_name, s.working_days, e.name, e.code, e.status, e.created_at FROM employees e LEFT JOIN shifts s ON s.id = e.shift_id WHERE e.tenant_id=? ORDER BY e.id DESC');
             $eStmt->execute([(int)$tenantId]);
         }
         $employees = array_map(fn($r) => [
@@ -1496,10 +1496,17 @@ class AttendanceController
                 foreach ($punchesByDate as $dateStr => $list) {
                     if (!is_array($list) || !$list) continue;
                     usort($list, fn($a, $b) => strcmp((string)($a['ts'] ?? ''), (string)($b['ts'] ?? '')));
+                    $listCount = count($list);
+                    $pairCount = (int)floor($listCount / 2);
 
-                    for ($i = 0; $i + 1 < count($list); $i += 2) {
-                        $in = (string)($list[$i]['ts'] ?? '');
-                        $out = (string)($list[$i + 1]['ts'] ?? '');
+                    for ($i = 0; $i < $pairCount; $i++) {
+                        $idxIn = $i * 2;
+                        // Last punch is out for the last pair if odd count, else the paired punch
+                        $isLastOddPair = ($i === $pairCount - 1) && ($listCount % 2) === 1;
+                        $idxOut = $isLastOddPair ? $listCount - 1 : $idxIn + 1;
+
+                        $in = (string)($list[$idxIn]['ts'] ?? '');
+                        $out = (string)($list[$idxOut]['ts'] ?? '');
                         $dur = 0;
                         $inTs = $in !== '' ? strtotime($in) : false;
                         $outTs = $out !== '' ? strtotime($out) : false;
@@ -1515,8 +1522,8 @@ class AttendanceController
                             'duration_minutes' => $dur,
                             'clock_in_method' => 'machine',
                             'clock_out_method' => 'machine',
-                            'clock_in_device_id' => $list[$i]['device_id'] ?? null,
-                            'clock_out_device_id' => $list[$i + 1]['device_id'] ?? null,
+                            'clock_in_device_id' => $list[$idxIn]['device_id'] ?? null,
+                            'clock_out_device_id' => $list[$idxOut]['device_id'] ?? null,
                             'clock_in_lat' => null,
                             'clock_in_lng' => null,
                             'clock_in_accuracy_m' => null,
@@ -1527,29 +1534,41 @@ class AttendanceController
                         $existingDates[$dateStr] = true;
                     }
 
-                    if ((count($list) % 2) === 1) {
-                        $last = $list[count($list) - 1] ?? null;
-                        $in = is_array($last) ? (string)($last['ts'] ?? '') : '';
-                        if ($in !== '') {
-                            $attendance[] = [
-                                'id' => null,
-                                'employee_id' => (string)$employeeId,
-                                'date' => $dateStr,
-                                'clock_in' => $in,
-                                'clock_out' => null,
-                                'duration_minutes' => 0,
-                                'clock_in_method' => 'machine',
-                                'clock_out_method' => null,
-                                'clock_in_device_id' => is_array($last) ? ($last['device_id'] ?? null) : null,
-                                'clock_out_device_id' => null,
-                                'clock_in_lat' => null,
-                                'clock_in_lng' => null,
-                                'clock_in_accuracy_m' => null,
-                                'clock_out_lat' => null,
-                                'clock_out_lng' => null,
-                                'clock_out_accuracy_m' => null,
-                            ];
-                            $existingDates[$dateStr] = true;
+                    // Only 1 punch with no pair: default out to midnight (past dates only)
+                    if ($listCount === 1) {
+                        $todayLocal = date('Y-m-d');
+                        if ($dateStr < $todayLocal) {
+                            $last = $list[0];
+                            $in = is_array($last) ? (string)($last['ts'] ?? '') : '';
+                            if ($in !== '') {
+                                $midnight = (new \DateTimeImmutable($dateStr))->modify('+1 day')->format('Y-m-d 00:00:00');
+                                $out = $midnight;
+                                $dur = 0;
+                                $inTs = $in !== '' ? strtotime($in) : false;
+                                $outTs = $out !== '' ? strtotime($out) : false;
+                                if ($inTs !== false && $outTs !== false && $outTs > $inTs) {
+                                    $dur = (int)floor(($outTs - $inTs) / 60);
+                                }
+                                $attendance[] = [
+                                    'id' => null,
+                                    'employee_id' => (string)$employeeId,
+                                    'date' => $dateStr,
+                                    'clock_in' => $in,
+                                    'clock_out' => $out,
+                                    'duration_minutes' => $dur,
+                                    'clock_in_method' => 'machine',
+                                    'clock_out_method' => null,
+                                    'clock_in_device_id' => is_array($last) ? ($last['device_id'] ?? null) : null,
+                                    'clock_out_device_id' => null,
+                                    'clock_in_lat' => null,
+                                    'clock_in_lng' => null,
+                                    'clock_in_accuracy_m' => null,
+                                    'clock_out_lat' => null,
+                                    'clock_out_lng' => null,
+                                    'clock_out_accuracy_m' => null,
+                                ];
+                                $existingDates[$dateStr] = true;
+                            }
                         }
                     }
                 }
